@@ -1,0 +1,63 @@
+#!/usr/bin/python
+
+import os
+
+
+cpu=1
+
+def make_script(sample_id,range_set):
+    output1=open('PBS_make_cool2txt_same_CRISPRi_'+sample_id+'.pbs','w')
+    output1.write('#PBS -N cool2txt_same_CRISPRi_'+sample_id+'\n')
+    output1.write('#PBS -q workq\n')
+    output1.write('#PBS -l nodes=n15:ppn='+str(cpu)+'\n')
+    output1.write('#PBS -j oe\n')
+    output1.write('\n')
+    output1.write('# go workdir\n')
+    output1.write('cd $PBS_O_WORKDIR\n')
+    output1.write('\n')
+    output1.write('# run command \n')
+    output1.write('sleep 5\n')
+    output1.write('\n')
+    output1.write('echo -n \"I am on: \"\n')
+    output1.write('hostname;\n')    
+    output1.write('echo finding ssh-accessible nodes:\n')
+    output1.write('echo -n \"running on: \"\n')
+    output1.write('\n')
+
+    output1.write("source activate Charlie_capture_HiCAR\n")    
+    #output1.write('cooler dump --header --join --no-balance --range {} -o ./cool2txt/{}.1kb.txt.gz ./aggregated_cool/{}.1000.mcool::/resolutions/1000\n'.format(range_set, sample_id, sample_id))
+    output1.write('cooler dump --header --join --no-balance --range {} -o ./cool2txt/{}.2kb.txt.gz ./aggregated_cool/{}.1000.mcool::/resolutions/2000\n'.format(range_set, sample_id, sample_id))
+    #output1.write('cooler dump --header --join --no-balance --range {} -o ./cool2txt/{}.5kb.txt.gz ./aggregated_cool/{}.1000.mcool::/resolutions/5000\n'.format(range_set, sample_id, sample_id))
+    output1.write('cooler dump --header --join --no-balance --range {} -o ./cool2txt/{}.10kb.txt.gz ./aggregated_cool/{}.1000.mcool::/resolutions/10000\n'.format(range_set, sample_id, sample_id))
+    #output1.write('cooler dump --header --join --no-balance --range {} -o ./cool2txt/{}.20kb.txt.gz ./aggregated_cool/{}.1000.mcool::/resolutions/20000\n'.format(range_set, sample_id, sample_id))
+    #output1.write('cooler dump --header --join --no-balance --range {} -o ./cool2txt/{}.40kb.txt.gz ./aggregated_cool/{}.20000.mcool::/resolutions/40000\n'.format(range_set, sample_id, sample_id))
+    output1.write('\n')
+    
+    output1.write('sleep 30\n')
+    output1.write('exit 0')
+
+    output1.close()
+
+
+
+#sample_list = ['krabnontarget1','krabnontarget2','krabregion31','krabregion32']
+sample_list = [
+'VP64_NT_1_stim',
+'VP64_NT_1_ctrl',
+'VP64_NT_3_stim',
+'VP64_NT_3_ctrl',
+'VP64_TA448_1_stim',
+'VP64_TA448_1_ctrl',
+'VP64_TA448_2_stim',
+'VP64_TA448_2_ctrl',
+'VP64_TA448_3_stim',
+'VP64_TA448_3_ctrl'
+]
+
+range1='chr14:23,303,865-23,451,365'
+for sample_id in sample_list:
+    make_script(sample_id,range1)
+    os.system('qsub PBS_make_cool2txt_same_CRISPRi_'+sample_id+'.pbs')
+
+
+
