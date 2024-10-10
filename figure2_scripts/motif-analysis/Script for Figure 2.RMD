@@ -1,0 +1,1140 @@
+---
+title: "Motif analysis for C3 peaks R3 and PABPN1"
+output: html_notebook
+---
+
+
+
+#Libraries to load
+```{r}
+library(DESeq2)
+library(tidyverse)
+```
+Load files
+```{r}
+motifs_up <- read.table("fimo_up.tsv", header = TRUE, sep = "\t")%>%
+  filter(!grepl("\\(.*\\)", motif_alt_id))
+motifs_down <- read.table("fimo_down.tsv", header = TRUE, sep = "\t")%>%
+  filter(!grepl("\\(.*\\)", motif_alt_id))
+TFany <- read.table("gene_expression_anyTF.txt", header = TRUE, sep = "\t")
+```
+
+
+Data wrangling
+```{r}
+filtered_motifs_up <- motifs_up %>%filter(q.value < 0.1)
+filtered_motifs_down <- motifs_down %>%filter(q.value < 0.1)
+```
+
+
+Removing values not expressed
+```{r}
+# Filter and create new data frames with _expressed appended to their names
+# This excludes combined motifs I dont want to deal with it and in most cases are covered by the individual motif
+filtered_motifs_up_expressed <- filtered_motifs_up %>%
+  filter(motif_alt_id %in% TFany$gene)
+
+filtered_motifs_down_expressed <- filtered_motifs_down %>%
+  filter(motif_alt_id %in% TFany$gene)
+
+```
+
+
+
+
+```{r}
+# Ensure that the column names are the same for the join
+# Rename the column in TFany if necessary
+TFany <- TFany %>%
+  rename(motif_alt_id = gene)
+
+# Filter and add columns using left_join
+filtered_motifs_up_expressed <- filtered_motifs_up %>%
+  filter(motif_alt_id %in% TFany$motif_alt_id) %>%
+  left_join(TFany %>% select(motif_alt_id, padj, log2FoldChange), by = "motif_alt_id")
+
+filtered_motifs_down_expressed <- filtered_motifs_down %>%
+  filter(motif_alt_id %in% TFany$motif_alt_id) %>%
+  left_join(TFany %>% select(motif_alt_id, padj, log2FoldChange), by = "motif_alt_id")
+
+```
+
+
+```{r}
+# Write filtered_motifs_up_expressed to a text file
+#write.table(filtered_motifs_up_expressed, "filtered_motifs_up_expressed.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Write filtered_motifs_down_expressed to a text file
+#write.table(filtered_motifs_down_expressed, "filtered_motifs_down_expressed.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+
+
+
+
+
+
+```{r}
+# For filtered_motifs_up_expressed
+motif_up_counts <- filtered_motifs_up_expressed %>%
+  group_by(motif_alt_id) %>%
+  summarize(
+    count = n(),
+    padj = first(padj),  # Assumes each motif_alt_id has the same padj value
+    log2FoldChange = first(log2FoldChange),  # Assumes each motif_alt_id has the same log2FoldChange value
+    direction = ifelse(first(log2FoldChange) > 0, "up", "down")
+  ) %>%
+  arrange(desc(count))
+
+# For filtered_motifs_down_expressed
+motif_down_counts <- filtered_motifs_down_expressed %>%
+  group_by(motif_alt_id) %>%
+  summarize(
+    count = n(),
+    padj = first(padj),  # Assumes each motif_alt_id has the same padj value
+    log2FoldChange = first(log2FoldChange),  # Assumes each motif_alt_id has the same log2FoldChange value
+    direction = ifelse(first(log2FoldChange) > 0, "up", "down")
+  ) %>%
+  arrange(desc(count))
+
+```
+
+```{r}
+# Write motif_up_counts to a text file
+write.table(motif_up_counts, "motif_up_counts.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Write motif_down_counts to a text file
+write.table(motif_down_counts, "motif_down_counts.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+```{r}
+# Count the number of "up" and "down" entries in motif_up_counts
+up_down_summary_up <- motif_up_counts %>%
+  group_by(direction) %>%
+  summarize(count = n()) %>%
+  filter(direction %in% c("up", "down"))
+
+# Count the number of "up" and "down" entries in motif_down_counts
+up_down_summary_down <- motif_down_counts %>%
+  group_by(direction) %>%
+  summarize(count = n()) %>%
+  filter(direction %in% c("up", "down"))
+
+```
+
+```{r}
+# Write up_down_summary_up to a text file
+write.table(up_down_summary_up, "up_down_summary_up.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Write up_down_summary_down to a text file
+write.table(up_down_summary_down, "up_down_summary_down.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+
+
+unique motifs to up or down enhancers
+```{r}
+# Extract motif_alt_id values from each counts data frame
+up_motifs <- motif_up_counts %>%
+  #filter(direction == "up") %>%
+  pull(motif_alt_id)
+
+down_motifs <- motif_down_counts %>%
+  #filter(direction == "down") %>%
+  pull(motif_alt_id)
+
+# Motifs unique to "up" (present in up_motifs but not in down_motifs)
+unique_to_up <- setdiff(up_motifs, down_motifs)
+
+# Motifs unique to "down" (present in down_motifs but not in up_motifs)
+unique_to_down <- setdiff(down_motifs, up_motifs)
+
+```
+
+```{r}
+# Create data frame for motifs unique to "up"
+unique_to_up_df <- data.frame(motif_alt_id = unique_to_up, direction = "up")
+
+# Create data frame for motifs unique to "down"
+unique_to_down_df <- data.frame(motif_alt_id = unique_to_down, direction = "down")
+
+# Write unique_to_up_df to a text file
+write.table(unique_to_up_df, "unique_to_up_peaks.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Write unique_to_down_df to a text file
+write.table(unique_to_down_df, "unique_to_down_peaks.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+
+
+
+```
+
+```{r}
+library(GenomicRanges)
+```
+
+
+Function to link enhancers to motifs
+```{r}
+# Function to link enhancers to motifs
+link_enhancers_to_motifs <- function(enhancer_bed, motifs_df) {
+  # Load enhancer data
+  enhancers <- read.table(enhancer_bed, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  colnames(enhancers) <- c("chr", "start", "end")  # Adjusting for 3 columns
+  
+  # Create a GRanges object for enhancers
+  enhancer_gr <- GRanges(seqnames = enhancers$chr,
+                         ranges = IRanges(start = enhancers$start, end = enhancers$end))
+  
+  # Create a GRanges object for motifs
+  motif_gr <- GRanges(seqnames = motifs_df$sequence_name,  # Using 'sequence_name' for chromosome
+                      ranges = IRanges(start = motifs_df$start, end = motifs_df$stop),
+                      motif_alt_id = motifs_df$motif_alt_id,
+                      padj = motifs_df$padj,
+                      log2FoldChange = motifs_df$log2FoldChange)
+  
+  # Find overlaps between enhancers and motifs
+  overlaps <- findOverlaps(enhancer_gr, motif_gr)
+  
+  # Extract relevant data
+  linked_motifs <- data.frame(
+    enhancer_chr = seqnames(enhancer_gr)[queryHits(overlaps)],
+    enhancer_start = start(enhancer_gr)[queryHits(overlaps)],
+    enhancer_end = end(enhancer_gr)[queryHits(overlaps)],
+    motif_chr = seqnames(motif_gr)[subjectHits(overlaps)],
+    motif_start = start(motif_gr)[subjectHits(overlaps)],
+    motif_end = end(motif_gr)[subjectHits(overlaps)],
+    motif_alt_id = motif_gr$motif_alt_id[subjectHits(overlaps)],
+    padj = motif_gr$padj[subjectHits(overlaps)],
+    log2FoldChange = motif_gr$log2FoldChange[subjectHits(overlaps)]
+  )
+  
+  return(linked_motifs)
+}
+
+```
+
+```{r}
+difpeaks.bed <- read.table("difpeaks.bed", header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+
+
+```
+```{r}
+head(filtered_motifs_up_expressed)
+head(filtered_motifs_down_expressed)
+
+```
+
+
+```{r}
+# Example usage
+linked_motifs_up <- link_enhancers_to_motifs("difpeaks.bed", filtered_motifs_up_expressed)
+linked_motifs_down <- link_enhancers_to_motifs("difpeaks.bed", filtered_motifs_down_expressed)
+```
+
+
+
+```{r}
+# Reorder columns in linked_motifs_up with enhancer_name as the first column
+linked_motifs_up <- linked_motifs_up %>%
+  mutate(enhancer_name = paste(enhancer_chr, enhancer_start, enhancer_end, sep = "_")) %>%
+  select(enhancer_name, everything())
+
+# Reorder columns in linked_motifs_down with enhancer_name as the first column
+linked_motifs_down <- linked_motifs_down %>%
+  mutate(enhancer_name = paste(enhancer_chr, enhancer_start, enhancer_end, sep = "_")) %>%
+  select(enhancer_name, everything())
+
+```
+
+```{r}
+# Filter linked_motifs_up to keep only unique motif_alt_id for each enhancer_name
+linked_motifs_up_unique <- linked_motifs_up %>%
+  distinct(enhancer_name, motif_alt_id, .keep_all = TRUE)
+
+# Filter linked_motifs_down to keep only unique motif_alt_id for each enhancer_name
+linked_motifs_down_unique <- linked_motifs_down %>%
+  distinct(enhancer_name, motif_alt_id, .keep_all = TRUE)
+
+# Print the results
+print(linked_motifs_up_unique)
+print(linked_motifs_down_unique)
+```
+```{r}
+# Count occurrences of each motif across all enhancers in linked_motifs_up
+motif_global_counts_up_unique <- linked_motifs_up_unique %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n(),
+            percent_of_peaks = total_count/2428*100) %>%
+  arrange(desc(total_count))
+
+# Count occurrences of each motif across all enhancers in linked_motifs_down
+motif_global_counts_down_unique <- linked_motifs_down_unique %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n(),
+            percent_of_peaks = total_count/1986*100) %>%
+  arrange(desc(total_count))
+
+```
+
+```{r}
+# Combine the unique linked_motifs_up and linked_motifs_down dataframes
+combined_linked_motifs_uniquemotifs_ineachenhancer <- bind_rows(linked_motifs_up_unique, linked_motifs_down_unique)
+
+```
+```{r}
+motif_global_counts_allenhancers_unique <- combined_linked_motifs_uniquemotifs_ineachenhancer %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n(),
+            percent_of_peaks = total_count/(2428+1986)*100) %>%
+  arrange(desc(total_count))
+```
+
+
+```{r}
+write.table(motif_global_counts_allenhancers_unique, "motif_global_counts_enhancers_containthemotif_allenhancers.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+```{r}
+# Write the global motif counts for up-regulated motifs to a text file
+write.table(motif_global_counts_up_unique, "motif_global_counts_enhancers_containthemotif_up.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Write the global motif counts for down-regulated motifs to a text file
+write.table(motif_global_counts_down_unique, "motif_global_counts_enhancers_containthemotif_down.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+```{r}
+# Count occurrences of each motif in each enhancer for linked_motifs_up
+linked_motif_counts_up <- linked_motifs_up %>%
+  group_by(enhancer_name, motif_alt_id) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+# Count occurrences of each motif in each enhancer for linked_motifs_down
+linked_motif_counts_down <- linked_motifs_down %>%
+  group_by(enhancer_name, motif_alt_id) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+```
+
+
+```{r}
+# Function to write motif counts to text files
+write_motif_counts <- function(up_counts, down_counts) {
+  # Write the up counts to a text file
+  write.table(up_counts, "motifcounts_perenhancer_up.txt", 
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  
+  # Write the down counts to a text file
+  write.table(down_counts, "motifcounts_perenhancer_down.txt", 
+              sep = "\t", quote = FALSE, row.names = FALSE)
+}
+
+# Use the function to write the linked motif counts
+write_motif_counts(linked_motif_counts_up, linked_motif_counts_down)
+
+```
+
+```{r}
+# Count occurrences of each motif across all enhancers in linked_motifs_up
+motif_global_counts_up <- linked_motifs_up %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n()) %>%
+  arrange(desc(total_count))
+
+# Count occurrences of each motif across all enhancers in linked_motifs_down
+motif_global_counts_down <- linked_motifs_down %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n()) %>%
+  arrange(desc(total_count))
+
+```
+
+
+
+
+
+```{r}
+# Write the global motif counts for up-regulated motifs to a text file
+write.table(motif_global_counts_up, "motif_global_counts_up.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Write the global motif counts for down-regulated motifs to a text file
+write.table(motif_global_counts_down, "motif_global_counts_down.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+
+```{r}
+R3_fimo <- read.table("R3_fimo_isexpressed_withexpressiondata.txt", header = TRUE, sep = "\t")
+colnames(R3_fimo)
+```
+
+```{r}
+# Step 1: Filter R3_fimo to keep only unique motif_alt_id values
+R3_fimo_unique <- R3_fimo %>%
+  filter(q.value < 0.1) %>%
+  distinct(motif_alt_id, .keep_all = TRUE)
+
+# Step 2: Check if motifs from filtered_motifs_up_expressed are in R3_fimo_unique
+common_motifs_up <- filtered_motifs_up_expressed %>%
+  filter(motif_alt_id %in% R3_fimo_unique$motif_alt_id) %>%
+  filter(padj < 0.05) %>%
+  distinct(motif_alt_id, .keep_all = TRUE) %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down"))
+
+# Step 3: Check if motifs from filtered_motifs_down_expressed are in R3_fimo_unique
+common_motifs_down <- filtered_motifs_down_expressed %>%
+  filter(motif_alt_id %in% R3_fimo_unique$motif_alt_id) %>%
+  filter(padj < 0.05) %>%
+  distinct(motif_alt_id, .keep_all = TRUE) %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down"))
+
+# Print the results
+print(common_motifs_up)
+print(common_motifs_down)
+
+```
+
+
+
+
+```{r}
+# Step 1: Filter R3_fimo based on motifs in common_motifs_up
+filtered_R3_fimo_up <- R3_fimo %>%
+  filter(motif_alt_id %in% common_motifs_up$motif_alt_id)
+
+# Count occurrences in filtered_R3_fimo_up
+motif_counts_up <- filtered_R3_fimo_up %>%
+  group_by(motif_alt_id) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  arrange(desc(count))
+
+# Add direction to motif_counts_up
+motif_counts_up <- motif_counts_up %>%
+  left_join(common_motifs_up %>% select(motif_alt_id, direction), by = "motif_alt_id")
+
+# Step 2: Filter R3_fimo based on motifs in common_motifs_down
+filtered_R3_fimo_down <- R3_fimo %>%
+  filter(motif_alt_id %in% common_motifs_down$motif_alt_id)
+
+# Count occurrences in filtered_R3_fimo_down
+motif_counts_down <- filtered_R3_fimo_down %>%
+  group_by(motif_alt_id) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  arrange(desc(count))
+
+# Add direction to motif_counts_down
+motif_counts_down <- motif_counts_down %>%
+  left_join(common_motifs_down %>% select(motif_alt_id, direction), by = "motif_alt_id")
+
+# Print the results
+print(motif_counts_up)
+print(motif_counts_down)
+```
+
+```{r}
+# Write motif_counts_up to a text file
+write.table(motif_counts_up, file = "R3_motif_counts_up_with_direction_padj0.05_q0.1.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Write motif_counts_down to a text file
+write.table(motif_counts_down, file = "R3_motif_counts_down_with_direction_padj0.05_q0.1.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Write filtered_R3_fimo_up to a text file
+write.table(filtered_R3_fimo_up, file = "filtered_R3_fimo_up_padj0.05_q0.1.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Write filtered_R3_fimo_down to a text file
+write.table(filtered_R3_fimo_down, file = "filtered_R3_fimo_down_padj0.05_q0.1.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+
+
+Upload motifs these are those that are expressed in the cell and have an fdr<0.1
+```{r}
+up_motifs <-read.table("filtered_motifs_up_expressed.txt", header = TRUE, sep = "\t")
+down_motifs <-read.table("filtered_motifs_down_expressed.txt", header = TRUE, sep = "\t")
+```
+
+```{r}
+# For down_motifs
+down_motifs <- down_motifs %>%
+  mutate(motif_coord = paste(sequence_name, start, stop, sep = "_")) %>%
+  select(motif_coord, everything())
+
+# For up_motifs
+up_motifs <- up_motifs %>%
+  mutate(motif_coord = paste(sequence_name, start, stop, sep = "_")) %>%
+  select(motif_coord, everything())
+
+```
+
+
+Trying to do this
+```{r}
+# For down_motifs
+overlapping_down_motifs <- down_motifs %>%
+  inner_join(down_motifs, by = "sequence_name", suffix = c("_1", "_2"), relationship = "many-to-many") %>%
+  filter(abs(start_1 - start_2) <= 2 & abs(stop_1 - stop_2) <= 2) %>%
+  filter(start_1 < start_2 | (start_1 == start_2 & stop_1 < stop_2))  # Enforce unique pairs
+
+# For up_motifs
+overlapping_up_motifs <- up_motifs %>%
+  inner_join(up_motifs, by = "sequence_name", suffix = c("_1", "_2"), relationship = "many-to-many") %>%
+  filter(abs(start_1 - start_2) <= 2 & abs(stop_1 - stop_2) <= 2) %>%
+  filter(start_1 < start_2 | (start_1 == start_2 & stop_1 < stop_2))  # Enforce unique pairs
+
+
+```
+
+cluster
+```{r}
+# Step 1: Identify overlapping pairs (same as before)
+overlapping_pairs <- down_motifs %>%
+  inner_join(down_motifs, by = "sequence_name", suffix = c("_1", "_2")) %>%
+  filter(abs(start_1 - start_2) <= 2 & abs(stop_1 - stop_2) <= 2) %>%
+  filter(motif_coord_1 != motif_coord_2) 
+
+# Step 2: Combine the overlaps into clusters
+library(igraph)
+
+# Create a graph where each motif is a node and an edge represents an overlap
+edges <- overlapping_pairs %>%
+  select(motif_coord_1, motif_coord_2) %>%
+  as.matrix()
+
+graph <- graph_from_edgelist(edges, directed = FALSE)
+
+# Find clusters of connected components (each component is a cluster of overlapping motifs)
+clusters <- components(graph)
+
+# Step 3: Extract cluster information
+cluster_df <- data.frame(
+  motif_coord = names(clusters$membership),
+  cluster_id = clusters$membership
+)
+
+# Join back with the original data to get the full information for each cluster
+down_motifs_with_clusters <- down_motifs %>%
+  left_join(cluster_df, by = c("motif_coord" = "motif_coord"))
+
+# Inspect the clusters
+down_motifs_with_clusters %>%
+  arrange(cluster_id)
+
+```
+
+```{r}
+# Step 1: Identify overlapping pairs (same as before)
+overlapping_pairs_up <- up_motifs %>%
+  inner_join(up_motifs, by = "sequence_name", suffix = c("_1", "_2")) %>%
+  filter(abs(start_1 - start_2) <= 2 & abs(stop_1 - stop_2) <= 2) %>%
+  filter(motif_coord_1 != motif_coord_2) 
+
+# Step 2: Combine the overlaps into clusters
+library(igraph)
+
+# Create a graph where each motif is a node and an edge represents an overlap
+edges_up <- overlapping_pairs_up %>%
+  select(motif_coord_1, motif_coord_2) %>%
+  as.matrix()
+
+graph_up <- graph_from_edgelist(edges_up, directed = FALSE)
+
+# Find clusters of connected components (each component is a cluster of overlapping motifs)
+clusters_up <- components(graph_up)
+
+# Step 3: Extract cluster information
+cluster_df_up <- data.frame(
+  motif_coord = names(clusters_up$membership),
+  cluster_id = clusters_up$membership
+)
+
+# Join back with the original data to get the full information for each cluster
+up_motifs_with_clusters <- up_motifs %>%
+  left_join(cluster_df_up, by = c("motif_coord" = "motif_coord"))
+
+# Inspect the clusters
+up_motifs_with_clusters %>%
+  arrange(cluster_id)
+
+```
+
+Explanation:
+igraph package: This is used to create a graph where nodes represent motifs and edges represent overlaps.
+Connected components: The graph is analyzed to find connected components, where each component represents a cluster of overlapping motifs.
+Cluster ID: Each motif is assigned a cluster_id based on its connected component.
+Handling Clusters:
+Summarize: You can summarize the clusters to get an overview of how many motifs are in each cluster, their coordinates, etc.
+Further Analysis: Depending on your needs, you might want to extract only unique clusters or perform further operations based on cluster size or content.
+This approach allows you to handle cases where more than two motifs overlap, treating them as clusters rather than just pairs.
+
+
+Explanation:
+overlapping_pairs_up: This identifies overlapping pairs in the up_motifs dataframe.
+edges_up and graph_up: These steps create the graph based on overlaps and identify clusters of connected motifs.
+clusters_up: This identifies the connected components (clusters) within the graph.
+cluster_df_up: This dataframe holds the motif_coord and corresponding cluster_id for each motif.
+up_motifs_with_clusters: The final dataframe that includes the cluster information for each motif, which you can then analyze further.
+You can now work with up_motifs_with_clusters to analyze overlapping clusters of motifs in your up_motifs dataframe.
+
+
+assigning single TF motif cluster
+```{r}
+# Assign a unique cluster_id to non-overlapping motifs in up_motifs_with_clusters
+up_motifs_with_clusters <- up_motifs_with_clusters %>%
+  mutate(cluster_id = ifelse(is.na(cluster_id), 
+                             paste0("single_", row_number()), 
+                             cluster_id))
+
+# Assign a unique cluster_id to non-overlapping motifs in down_motifs_with_clusters
+down_motifs_with_clusters <- down_motifs_with_clusters %>%
+  mutate(cluster_id = ifelse(is.na(cluster_id), 
+                             paste0("single_", row_number()), 
+                             cluster_id))
+
+```
+
+
+```{r}
+# Load the igraph library
+library(igraph)
+
+# Create the PDF file
+pdf("igraph_graphs.pdf")
+
+# Check if the edge lists are valid and plot the graphs
+if (!is.null(edges) && nrow(edges) > 0) {
+  # Create and plot the graph for down_motifs
+  graph_down <- graph_from_edgelist(edges, directed = FALSE)
+  if (!is.null(graph_down)) {
+    plot(graph_down, main = "Down Motifs Graph", vertex.size = 5, vertex.label.cex = 0.7)
+  } else {
+    message("Error creating graph_down.")
+  }
+} else {
+  message("Invalid edges data for down_motifs.")
+}
+
+if (!is.null(edges_up) && nrow(edges_up) > 0) {
+  # Create and plot the graph for up_motifs
+  graph_up <- graph_from_edgelist(edges_up, directed = FALSE)
+  if (!is.null(graph_up)) {
+    plot(graph_up, main = "Up Motifs Graph", vertex.size = 5, vertex.label.cex = 0.7)
+  } else {
+    message("Error creating graph_up.")
+  }
+} else {
+  message("Invalid edges data for up_motifs.")
+}
+
+# Close the PDF device
+dev.off()
+
+```
+```{r}
+difpeaks.bed <- read.table("difpeaks.bed", header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+TPM_TF <- read.table("gene_expression_anyTF_onlyavgTPMs.txt", header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+```
+
+```{r}
+# Save up_motifs_with_clusters to a text file
+write.table(up_motifs_with_clusters, file = "up_motifs_with_clusters.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Save down_motifs_with_clusters to a text file
+write.table(down_motifs_with_clusters, file = "down_motifs_with_clusters.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+```{r}
+# Process up_motifs_with_clusters
+up_motifs_filtered <- up_motifs_with_clusters %>%
+  group_by(cluster_id, motif_alt_id) %>%
+  arrange(q.value) %>%   # Arrange by q.value to get the smallest value first
+  slice(1) %>%           # Select the first row (smallest q.value)
+  ungroup()
+
+# Process down_motifs_with_clusters
+down_motifs_filtered <- down_motifs_with_clusters %>%
+  group_by(cluster_id, motif_alt_id) %>%
+  arrange(q.value) %>%   # Arrange by q.value to get the smallest value first
+  slice(1) %>%           # Select the first row (smallest q.value)
+  ungroup()
+```
+
+
+
+```{r}
+# Function to create a unique identifier for each set of motif_alt_id
+create_set_id <- function(df) {
+  df %>%
+    group_by(cluster_id) %>%
+    summarise(motif_set = paste(sort(unique(motif_alt_id)), collapse = ",")) %>%
+    ungroup()
+}
+
+```
+
+```{r}
+# Process up_motifs_with_clusters
+up_motifs_set_ids <- up_motifs_filtered %>%
+  group_by(cluster_id) %>%
+  mutate(motif_alt_id_sorted = paste(sort(motif_alt_id), collapse = ",")) %>%
+  summarise(motif_set = unique(motif_alt_id_sorted)) %>%
+  ungroup()
+
+# Merge back to get the labels for each cluster
+up_motifs_with_labels <- up_motifs_filtered %>%
+  left_join(up_motifs_set_ids, by = "cluster_id") %>%
+  group_by(motif_set) %>%
+  mutate(cluster_group_label = cur_group_id()) %>%
+  ungroup()
+
+# Process down_motifs_with_clusters
+down_motifs_set_ids <- down_motifs_filtered %>%
+  group_by(cluster_id) %>%
+  mutate(motif_alt_id_sorted = paste(sort(motif_alt_id), collapse = ",")) %>%
+  summarise(motif_set = unique(motif_alt_id_sorted)) %>%
+  ungroup()
+
+# Merge back to get the labels for each cluster
+down_motifs_with_labels <- down_motifs_filtered %>%
+  left_join(down_motifs_set_ids, by = "cluster_id") %>%
+  group_by(motif_set) %>%
+  mutate(cluster_group_label = cur_group_id()) %>%
+  ungroup()
+```
+
+```{r}
+# Save labeled up_motifs_with_clusters to a text file
+write.table(up_motifs_with_labels, file = "up_motifs_with_labels.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Save labeled down_motifs_with_clusters to a text file
+write.table(down_motifs_with_labels, file = "down_motifs_with_labels.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+```{r}
+up_motifs_summary <- up_motifs_with_labels %>%
+  group_by(cluster_group_label, motif_set) %>%
+  summarise(unique_clusters = n_distinct(cluster_id)) %>%
+  ungroup()
+
+# Summary for down_motifs_with_labels
+down_motifs_summary <- down_motifs_with_labels %>%
+  group_by(cluster_group_label, motif_set) %>%
+  summarise(unique_clusters = n_distinct(cluster_id)) %>%
+  ungroup()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+difpeaks.bed <- read.table("difpeaks.bed", header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+TPM_TF <- read.table("gene_expression_anyTF_onlyavgTPMs.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+up_motifs_with_labels <- read.table("up_motifs_with_labels.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+down_motifs_with_labels <- read.table("down_motifs_with_labels.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+```
+
+
+```{r}
+difpeaks.bed <- difpeaks.bed %>%
+  mutate(peak_name = paste(V1, V2, V3, sep = "_"))
+```
+
+
+```{r}
+# Adding avg_chir_tpm to down_motifs_with_labels
+down_motifs_with_labels <- down_motifs_with_labels %>%
+  left_join(TPM_TF %>% select(gene, avg_chir_tpm), by = c("motif_alt_id" = "gene"))
+
+# Adding avg_chir_tpm to up_motifs_with_labels
+up_motifs_with_labels <- up_motifs_with_labels %>%
+  left_join(TPM_TF %>% select(gene, avg_chir_tpm), by = c("motif_alt_id" = "gene"))
+
+```
+
+```{r}
+library(dplyr)
+
+# For down_motifs_with_labels
+down_motifs_with_labels <- down_motifs_with_labels %>%
+  group_by(cluster_id) %>%
+  mutate(dominant_motif = motif_alt_id[which.max(avg_chir_tpm)]) %>%
+  ungroup()
+
+# For up_motifs_with_labels
+up_motifs_with_labels <- up_motifs_with_labels %>%
+  group_by(cluster_id) %>%
+  mutate(dominant_motif = motif_alt_id[which.max(avg_chir_tpm)]) %>%
+  ungroup()
+
+```
+
+
+Function to link enhancers to motifs
+```{r}
+# Function to link enhancers to motifs
+link_enhancers_to_motifs <- function(enhancer_bed, motifs_df) {
+  # Load enhancer data
+  enhancers <- read.table(enhancer_bed, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  colnames(enhancers) <- c("chr", "start", "end")  # Adjusting for 3 columns
+  
+  # Create a GRanges object for enhancers
+  enhancer_gr <- GRanges(seqnames = enhancers$chr,
+                         ranges = IRanges(start = enhancers$start, end = enhancers$end))
+  
+  # Create a GRanges object for motifs
+  motif_gr <- GRanges(seqnames = motifs_df$sequence_name,  # Using 'sequence_name' for chromosome
+                      ranges = IRanges(start = motifs_df$start, end = motifs_df$stop),
+                      motif_alt_id = motifs_df$motif_alt_id,
+                      padj = motifs_df$padj,
+                      log2FoldChange = motifs_df$log2FoldChange,
+                      cluster_id = motifs_df$cluster_id,
+                      motif_set = motifs_df$motif_set,
+                      cluster_group_label = motifs_df$cluster_group_label,
+                      avg_chir_tpm=motifs_df$avg_chir_tpm,
+                      dominant_motif=motifs_df$dominant_motif)
+  
+  # Find overlaps between enhancers and motifs
+  overlaps <- findOverlaps(enhancer_gr, motif_gr)
+  
+  # Extract relevant data
+  linked_motifs <- data.frame(
+    enhancer_chr = seqnames(enhancer_gr)[queryHits(overlaps)],
+    enhancer_start = start(enhancer_gr)[queryHits(overlaps)],
+    enhancer_end = end(enhancer_gr)[queryHits(overlaps)],
+    motif_chr = seqnames(motif_gr)[subjectHits(overlaps)],
+    motif_start = start(motif_gr)[subjectHits(overlaps)],
+    motif_end = end(motif_gr)[subjectHits(overlaps)],
+    motif_alt_id = motif_gr$motif_alt_id[subjectHits(overlaps)],
+    padj = motif_gr$padj[subjectHits(overlaps)],
+    cluster_id = motif_gr$cluster_id[subjectHits(overlaps)],
+    log2FoldChange = motif_gr$log2FoldChange[subjectHits(overlaps)],
+    motif_set = motif_gr$motif_set[subjectHits(overlaps)],
+    cluster_group_label = motif_gr$cluster_group_label[subjectHits(overlaps)],
+    avg_chir_tpm = motif_gr$avg_chir_tpm[subjectHits(overlaps)],
+    dominant_motif = motif_gr$dominant_motif[subjectHits(overlaps)]
+    
+  )
+  
+  return(linked_motifs)
+}
+
+```
+
+
+```{r}
+# Example usage
+linked_motifs_up <- link_enhancers_to_motifs("difpeaks.bed", up_motifs_with_labels)
+linked_motifs_down <- link_enhancers_to_motifs("difpeaks.bed", down_motifs_with_labels)
+```
+
+```{r}
+# Reorder columns in linked_motifs_up with enhancer_name as the first column
+linked_motifs_up <- linked_motifs_up %>%
+  mutate(enhancer_name = paste(enhancer_chr, enhancer_start, enhancer_end, sep = "_")) %>%
+  select(enhancer_name, everything())
+
+# Reorder columns in linked_motifs_down with enhancer_name as the first column
+linked_motifs_down <- linked_motifs_down %>%
+  mutate(enhancer_name = paste(enhancer_chr, enhancer_start, enhancer_end, sep = "_")) %>%
+  select(enhancer_name, everything())
+
+```
+
+
+```{r}
+# Filter linked_motifs_up to keep only unique motif_alt_id for each enhancer_name
+linked_motifs_up_unique <- linked_motifs_up %>%
+  distinct(enhancer_name, dominant_motif, .keep_all = TRUE)
+
+# Filter linked_motifs_down to keep only unique motif_alt_id for each enhancer_name
+linked_motifs_down_unique <- linked_motifs_down %>%
+  distinct(enhancer_name, dominant_motif, .keep_all = TRUE)
+
+# Print the results
+print(linked_motifs_up_unique)
+print(linked_motifs_down_unique)
+```
+
+```{r}
+# Count occurrences of each motif across all enhancers in linked_motifs_up
+motif_global_counts_up_unique <- linked_motifs_up_unique %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n(),
+            percent_of_peaks = total_count/2428*100) %>%
+  arrange(desc(total_count))
+
+# Count occurrences of each motif across all enhancers in linked_motifs_down
+motif_global_counts_down_unique <- linked_motifs_down_unique %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n(),
+            percent_of_peaks = total_count/1986*100) %>%
+  arrange(desc(total_count))
+
+```
+
+
+```{r}
+# Combine the unique linked_motifs_up and linked_motifs_down dataframes
+combined_linked_motifs_uniquemotifs_ineachenhancer <- bind_rows(linked_motifs_up_unique, linked_motifs_down_unique)
+
+```
+```{r}
+motif_global_counts_allenhancers_unique <- combined_linked_motifs_uniquemotifs_ineachenhancer %>%
+  group_by(motif_alt_id) %>%
+  summarize(total_count = n(),
+            percent_of_peaks = total_count/(2428+1986)*100) %>%
+  arrange(desc(total_count))
+```
+
+```{r}
+write.table(motif_global_counts_allenhancers_unique, "motif_global_counts_enhancers_containdominantmotif_allenhancers.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+```{r}
+# Write the global motif counts for up-regulated motifs to a text file
+write.table(motif_global_counts_up_unique, "motif_global_counts_enhancers_containdominantmotif_up.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Write the global motif counts for down-regulated motifs to a text file
+write.table(motif_global_counts_down_unique, "motif_global_counts_enhancers_containdominantmotif_down.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Repeating the clustering but for the enhancers now
+
+```{r}
+# For linked_motifs_down
+linked_motifs_down_with_motifs <- linked_motifs_down %>%
+  group_by(enhancer_name) %>%
+  mutate(enhancer_motifs = paste(unique(motif_alt_id), collapse = ",")) %>%
+  ungroup()
+
+# For linked_motifs_up
+linked_motifs_up_with_motifs <- linked_motifs_up %>%
+  group_by(enhancer_name) %>%
+  mutate(enhancer_motifs = paste(unique(motif_alt_id), collapse = ",")) %>%
+  ungroup()
+
+```
+
+
+
+```{r}
+# Step 1: Create a unique set of motif_alt_id for each enhancer_name
+enhancer_motifs_down_df <- linked_motifs_down_with_motifs %>%
+  group_by(enhancer_name) %>%
+  summarise(motif_set = paste(sort(unique(motif_alt_id)), collapse = ",")) %>%
+  ungroup()
+
+# Step 2: Create a cluster ID for each unique motif set
+enhancer_motifs_down_df <- enhancer_motifs_down_df %>%
+  group_by(motif_set) %>%
+  mutate(cluster_id = cur_group_id()) %>%
+  ungroup()
+
+# Step 3: Join the cluster_id back to the original dataframe
+linked_motifs_down_with_clusters <- linked_motifs_down_with_motifs %>%
+  left_join(enhancer_motifs_down_df %>% select(enhancer_name, cluster_id), by = "enhancer_name")
+
+# View the result
+head(linked_motifs_down_with_clusters)
+
+```
+
+
+
+
+
+
+
+```{r}
+# Step 1: Create a unique set of motif_alt_id for each enhancer_name
+enhancer_motifs_up_df <- linked_motifs_up_with_motifs %>%
+  group_by(enhancer_name) %>%
+  summarise(motif_set = paste(sort(unique(motif_alt_id)), collapse = ",")) %>%
+  ungroup()
+
+# Step 2: Create a cluster ID for each unique motif set
+enhancer_motifs_up_df <- enhancer_motifs_up_df %>%
+  group_by(motif_set) %>%
+  mutate(cluster_id = cur_group_id()) %>%
+  ungroup()
+
+# Step 3: Join the cluster_id back to the original dataframe
+linked_motifs_up_with_clusters <- linked_motifs_up_with_motifs %>%
+  left_join(enhancer_motifs_up_df %>% select(enhancer_name, cluster_id), by = "enhancer_name")
+
+# View the result
+head(linked_motifs_up_with_clusters)
+
+```
+
+
+
+```{r}
+linked_motifs_down_with_clusters <- linked_motifs_down_with_clusters %>%
+  rename(enhancer_cluster_id = cluster_id.y)
+
+linked_motifs_up_with_clusters <- linked_motifs_up_with_clusters %>%
+  rename(enhancer_cluster_id = cluster_id.y)
+
+```
+```{r}
+# Calculate the number of unique enhancer_name per enhancer_cluster_id
+cluster_counts_down <- linked_motifs_down_with_clusters %>%
+  group_by(enhancer_cluster_id) %>%
+  summarise(count_enhancers_per_cluster = n_distinct(enhancer_name)) %>%
+  ungroup()
+
+# Join the counts back to the original dataframe
+linked_motifs_down_with_counts <- linked_motifs_down_with_clusters %>%
+  left_join(cluster_counts_down, by = "enhancer_cluster_id")
+
+# View the result
+head(linked_motifs_down_with_counts)
+# Calculate the number of unique enhancer_name per enhancer_cluster_id
+cluster_counts_up <- linked_motifs_up_with_clusters %>%
+  group_by(enhancer_cluster_id) %>%
+  summarise(count_enhancers_per_cluster = n_distinct(enhancer_name)) %>%
+  ungroup()
+
+# Join the counts back to the original dataframe
+linked_motifs_up_with_counts <- linked_motifs_up_with_clusters %>%
+  left_join(cluster_counts_up, by = "enhancer_cluster_id")
+
+# View the result
+head(linked_motifs_up_with_counts)
+
+```
+```{r}
+# Calculate the number of unique motifs per enhancer_name
+motif_counts_down <- linked_motifs_down_with_counts %>%
+  group_by(enhancer_name) %>%
+  summarise(motifs_in_enhancer = n_distinct(motif_alt_id)) %>%
+  ungroup()
+
+# Join the counts back to the original dataframe
+linked_motifs_down_with_final_counts <- linked_motifs_down_with_counts %>%
+  left_join(motif_counts_down, by = "enhancer_name")
+
+# View the result
+head(linked_motifs_down_with_final_counts)
+# Calculate the number of unique motifs per enhancer_name
+motif_counts_up <- linked_motifs_up_with_counts %>%
+  group_by(enhancer_name) %>%
+  summarise(motifs_in_enhancer = n_distinct(motif_alt_id)) %>%
+  ungroup()
+
+# Join the counts back to the original dataframe
+linked_motifs_up_with_final_counts <- linked_motifs_up_with_counts %>%
+  left_join(motif_counts_up, by = "enhancer_name")
+
+# View the result
+head(linked_motifs_up_with_final_counts)
+
+```
+```{r}
+# Calculate the number of unique dominant_motif per enhancer_name
+dominant_motif_counts_down <- linked_motifs_down_with_final_counts %>%
+  group_by(enhancer_name) %>%
+  summarise(dominant_motifs_per_enhancer = n_distinct(dominant_motif)) %>%
+  ungroup()
+
+# Join the counts back to the original dataframe
+linked_motifs_down_with_all_counts <- linked_motifs_down_with_final_counts %>%
+  left_join(dominant_motif_counts_down, by = "enhancer_name")
+
+# View the result
+head(linked_motifs_down_with_all_counts)
+# Calculate the number of unique dominant_motif per enhancer_name
+dominant_motif_counts_up <- linked_motifs_up_with_final_counts %>%
+  group_by(enhancer_name) %>%
+  summarise(dominant_motifs_per_enhancer = n_distinct(dominant_motif)) %>%
+  ungroup()
+
+# Join the counts back to the original dataframe
+linked_motifs_up_with_all_counts <- linked_motifs_up_with_final_counts %>%
+  left_join(dominant_motif_counts_up, by = "enhancer_name")
+
+# View the result
+head(linked_motifs_up_with_all_counts)
+
+```
+
+
+```{r}
+write.table(linked_motifs_down_with_all_counts, file = "enhancer_clusters_with_motifs_down.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(linked_motifs_up_with_all_counts, file = "enhancer_clusters_with_motifs_up.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+
+
