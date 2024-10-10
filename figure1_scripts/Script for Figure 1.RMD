@@ -1,0 +1,547 @@
+---
+title: "Proliferation quantification"
+output: html_document
+---
+
+
+
+Library load
+```{r}
+library(tidyverse)
+library(scales)
+library(ggExtra)
+library(ggpubr)
+library(rstatix)
+```
+
+
+
+
+##Preprocessing
+Load files and organizing data
+```{r}
+nuclei.pre.table <- read.csv("Nuclei.csv", header = TRUE)
+metadata <- read.csv("metadata.2.csv", header = TRUE)
+nuclei.table <- nuclei.pre.table %>% select(ImageNumber, ObjectNumber, AreaShape_Area, Intensity_IntegratedIntensity_DNA, Intensity_IntegratedIntensity_EdU,Intensity_IntegratedIntensity_Alpha_actinin,Intensity_IntegratedIntensity_pHH3, Intensity_StdIntensity_DNA, Intensity_StdIntensity_EdU,Intensity_StdIntensity_Alpha_actinin,Intensity_StdIntensity_pHH3, Children_EdU_Count)
+head(nuclei.table)
+nuclei.table <- left_join(nuclei.table, metadata, by = c("ImageNumber" = "ImageNumber"))
+nuclei.table <- arrange(nuclei.table, OrderNumber.2)
+head(nuclei.table)
+```
+
+Down sampling all samples to be counting the same number of cells
+```{r}
+set.seed(42)
+nuclei.table.condition.1 <- nuclei.table %>% filter(Condition == "0uM.rep1")
+nuclei.table.condition.2 <- nuclei.table %>% filter(Condition == "0uM.rep2")
+nuclei.table.condition.3 <- nuclei.table %>% filter(Condition == "0uM.rep3")
+nuclei.table.condition.4 <- nuclei.table %>% filter(Condition == "2uM.rep1")
+nuclei.table.condition.5 <- nuclei.table %>% filter(Condition == "2uM.rep2")
+nuclei.table.condition.6 <- nuclei.table %>% filter(Condition == "2uM.rep3")
+nuclei.table.condition.7 <- nuclei.table %>% filter(Condition == "4uM.rep1")
+nuclei.table.condition.8 <- nuclei.table %>% filter(Condition == "4uM.rep2")
+nuclei.table.condition.9 <- nuclei.table %>% filter(Condition == "4uM.rep3")
+
+nuclei.table.condition.1 <-nuclei.table.condition.1[sample(1:nrow(nuclei.table.condition.1), 2000), ]
+nuclei.table.condition.2 <-nuclei.table.condition.2[sample(2:nrow(nuclei.table.condition.2), 2000), ]
+nuclei.table.condition.3 <-nuclei.table.condition.3[sample(3:nrow(nuclei.table.condition.3), 2000), ]
+nuclei.table.condition.4 <-nuclei.table.condition.4[sample(4:nrow(nuclei.table.condition.4), 2000), ]
+nuclei.table.condition.5 <-nuclei.table.condition.5[sample(5:nrow(nuclei.table.condition.5), 2000), ]
+nuclei.table.condition.6 <-nuclei.table.condition.6[sample(6:nrow(nuclei.table.condition.6), 2000), ]
+nuclei.table.condition.7 <-nuclei.table.condition.7[sample(7:nrow(nuclei.table.condition.7), 2000), ]
+nuclei.table.condition.8 <-nuclei.table.condition.8[sample(8:nrow(nuclei.table.condition.8), 2000), ]
+nuclei.table.condition.9 <-nuclei.table.condition.9[sample(9:nrow(nuclei.table.condition.9), 2000), ]
+nuclei.table <- rbind(nuclei.table.condition.1,nuclei.table.condition.2,nuclei.table.condition.3,nuclei.table.condition.4,nuclei.table.condition.5,nuclei.table.condition.6,nuclei.table.condition.7,nuclei.table.condition.8,nuclei.table.condition.9)
+write.csv(nuclei.table,"nucleitable.organized.trimmed.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.1,"nucleitable.condition1.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.2,"nucleitable.condition2.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.3,"nucleitable.condition3.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.4,"nucleitable.condition4.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.5,"nucleitable.condition5.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.6,"nucleitable.condition6.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.7,"nucleitable.condition7.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.8,"nucleitable.condition8.csv", row.names = FALSE)
+write.csv(nuclei.table.condition.9,"nucleitable.condition9.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+
+Quantify Percent EdU positive per replicate
+```{r}
+object.numbers.table <- nuclei.table %>% group_by(Condition)
+object.numbers.table<- summarize(object.numbers.table, Total.Nuclei=sum(Children_EdU_Count >= 0), Edu.Positvie=sum(Children_EdU_Count > 0), Percent.EdU = Edu.Positvie/Total.Nuclei*100)
+object.numbers.table <- left_join(object.numbers.table, metadata, by = c("Condition" = "Condition"))
+object.numbers.table <- as.data.frame(object.numbers.table)
+nuclei.table[,'ImageNumber']<-factor(nuclei.table[,'ImageNumber'])
+metadata[,'ImageNumber']<-factor(metadata[,'ImageNumber'])
+object.numbers.table[,'ImageNumber']<-factor(object.numbers.table[,'ImageNumber'])
+#edu.table <- edu.table[-which(edu.table$ImageNumber == "2"), ]
+#nuclei.table <- nuclei.table[-which(nuclei.table$ImageNumber == "2"), ]
+object.numbers.table <- object.numbers.table[-which(object.numbers.table$OrderNumber.1 == 100), ]
+#metadata <- metadata[-which(metadata$ImageNumber == "2"), ]
+#object.numbers.table
+head(object.numbers.table)
+mean.object.numbers.table <- object.numbers.table %>% group_by(OrderNumber.1)
+mean.object.numbers.table<- summarize(mean.object.numbers.table, mean.Percent.EdU = mean(Percent.EdU), sd = sd(Percent.EdU), NAME = Name)
+#mean.object.numbers.table <- left_join(mean.object.numbers.table, metadata, by = c("OrderNumber" = "OrderNumber"))
+#mean.object.numbers.table <- mean.object.numbers.table[-which(mean.object.numbers.table$OrderNumber == 100), ]
+mean.object.numbers.table[is.na(mean.object.numbers.table)] = 0
+mean.object.numbers.table
+write.csv(object.numbers.table,"replicatespercentedupositive.csv", row.names = FALSE)
+```
+
+
+#Need to change which rows you want to keep for the bar graphs
+```{r}
+mean.object.numbers.table <- mean.object.numbers.table[c(1,4,7),]
+mean.object.numbers.table
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Graph Section
+
+
+
+
+
+
+
+
+Bar graph for %Edu positive with mean and error bars
+```{r}
+Conditions <- mean.object.numbers.table$NAME
+graph1<-ggplot(data=mean.object.numbers.table, aes(x=reorder(NAME, OrderNumber.1), y=mean.Percent.EdU, fill = NAME)) +
+  geom_col(stat="identity")+
+  geom_errorbar(aes(ymin=mean.Percent.EdU-sd, ymax=mean.Percent.EdU+sd), width=.2,position=position_dodge(.9))+
+  theme_bw() +
+  scale_fill_brewer(palette="Set1",name="Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 17),
+          axis.text.y = element_text(face="bold",size = 17))+ 
+  ggtitle("Percent of nuclei that \nare EdU Positive",)+
+xlab("Condition") + ylab("Percent (%)")+ 
+  theme(axis.title.y = element_text(size=17, face="bold")) +
+  theme(axis.title.x = element_text(size=17, face="bold")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(plot.title = element_text(face="bold"))+
+theme(legend.title = element_text(face="bold",size = 17))+
+theme(legend.text = element_text(size = 20))
+
+#ggsave('Percent Edu Positive Graph.pdf', plot = graph1, device = "pdf",dpi = 700,width = 20, height = 20, units = "cm")
+ggsave('Percent Edu Positive Graph.png', plot = graph1, device = "png",dpi = 700)
+graph1
+```
+```{r}
+# Open PDF device
+pdf("Percent Edu Positive Graph.pdf")
+ggplot(data=mean.object.numbers.table, aes(x=reorder(NAME, OrderNumber.1), y=mean.Percent.EdU, fill = NAME)) +
+  geom_col(stat="identity")+
+  geom_errorbar(aes(ymin=mean.Percent.EdU-sd, ymax=mean.Percent.EdU+sd), width=.2,position=position_dodge(.9))+
+  theme_bw() +
+  scale_fill_brewer(palette="Set1",name="Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 17),
+          axis.text.y = element_text(face="bold",size = 17))+ 
+  ggtitle("Percent of nuclei that are EdU Positive",)+
+xlab("Condition") + ylab("Percent (%)")+ 
+  theme(axis.title.y = element_text(size=17, face="bold")) +
+  theme(axis.title.x = element_text(size=17, face="bold")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(plot.title = element_text(face="bold"))+
+theme(legend.title = element_text(face="bold",size = 17))+
+theme(legend.text = element_text(size = 20))
+# Close the PDF device
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+Making a %pHH3 by cut off in pHH3 intensity
+```{r}
+trial <- nuclei.table %>% group_by(Condition)
+summarize.trial <- trial %>% summarize(Total.Nuclei=sum(Children_EdU_Count >= 0), pHH3.Positive=sum(Intensity_IntegratedIntensity_pHH3 >= 1000), Percent.pHH3 = pHH3.Positive/Total.Nuclei*100)
+ summarize.trial <- left_join(summarize.trial, metadata, by = c("Condition" = "Condition"))
+summarize.trial
+summarize.trial <- as.data.frame(summarize.trial)
+nuclei.table[,'ImageNumber']<-factor(nuclei.table[,'ImageNumber'])
+metadata[,'ImageNumber']<-factor(metadata[,'ImageNumber'])
+summarize.trial[,'ImageNumber']<-factor(summarize.trial[,'ImageNumber'])
+summarize.trial <- summarize.trial[-which(summarize.trial$OrderNumber.1 == 100), ]
+write.csv(summarize.trial,"replicatespercentpHH3positive.csv", row.names = FALSE)
+mean.summarize.trial <- summarize.trial %>% group_by(OrderNumber.1)
+mean.summarize.trial<- summarize(mean.summarize.trial, mean.Percent.pHH3 = mean(Percent.pHH3), sd = sd(Percent.pHH3), NAME = Name)
+#mean.summarize.trial <- left_join(mean.summarize.trial, metadata, by = c("OrderNumber" = "OrderNumber"))
+#mean.summarize.trial <- mean.summarize.trial[-which(mean.summarize.trial$OrderNumber == 100), ]
+mean.summarize.trial[is.na(mean.summarize.trial)] = 0
+#mean.summarize.trial <- mean.summarize.trial[!duplicated(mean.summarize.trial$mean.Percent.pHH3)]
+mean.summarize.trial <- mean.summarize.trial[c(1,4,7),]
+mean.summarize.trial
+```
+
+```{r}
+mean.summarize.trial <- summarize.trial %>% group_by(OrderNumber.1)
+mean.summarize.trial<- summarize(mean.summarize.trial, mean.Percent.pHH3 = mean(Percent.pHH3), sd = sd(Percent.pHH3), NAME = Name)
+#mean.summarize.trial <- left_join(mean.summarize.trial, metadata, by = c("OrderNumber" = "OrderNumber"))
+#mean.summarize.trial <- mean.summarize.trial[-which(mean.summarize.trial$OrderNumber == 100), ]
+mean.summarize.trial[is.na(mean.summarize.trial)] = 0
+#mean.summarize.trial <- mean.summarize.trial[!duplicated(mean.summarize.trial$mean.Percent.pHH3)]
+mean.summarize.trial <- mean.summarize.trial[c(1,4,7),]
+mean.summarize.trial
+```
+
+
+```{r}
+graphphh3pos.bargraph<-ggplot(data=mean.summarize.trial, aes(x=reorder(NAME, OrderNumber.1), y=mean.Percent.pHH3, fill = NAME)) +
+  geom_col(stat="identity")+
+  geom_errorbar(aes(ymin=mean.Percent.pHH3-sd, ymax=mean.Percent.pHH3+sd), width=.2,position=position_dodge(.9))+
+  theme_bw() +
+  scale_fill_brewer(palette="Set1",name="Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 17),
+          axis.text.y = element_text(face="bold",size = 17))+ 
+  ggtitle("Percent of nuclei that \nare pHH3 Positive",)+
+xlab("Condition") + ylab("Percent (%)")+ 
+  theme(axis.title.y = element_text(size=17, face="bold")) +
+  theme(axis.title.x = element_text(size=17, face="bold")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(plot.title = element_text(face="bold"))+
+theme(legend.title = element_text(face="bold",size = 17))+
+theme(legend.text = element_text(size = 20))
+
+#ggsave('Percent Edu Positive Graph.pdf', plot = graph1, device = "pdf",dpi = 700,width = 20, height = 20, units = "cm")
+ggsave('Percent pHH3 Positive Graph.png', plot = graphphh3pos.bargraph, device = "png",dpi = 700)
+graphphh3pos.bargraph
+```
+
+```{r}
+# Open PDF device
+pdf("Percent pHH3 Positive Graph.pdf")
+ggplot(data=mean.summarize.trial, aes(x=reorder(NAME, OrderNumber.1), y=mean.Percent.pHH3, fill = NAME)) +
+  geom_col(stat="identity")+
+  geom_errorbar(aes(ymin=mean.Percent.pHH3-sd, ymax=mean.Percent.pHH3+sd), width=.2,position=position_dodge(.9))+
+  theme_bw() +
+  scale_fill_brewer(palette="Set1",name="Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 17),
+          axis.text.y = element_text(face="bold",size = 17))+ 
+  ggtitle("Percent of nuclei that \nare pHH3 Positive",)+
+xlab("Condition") + ylab("Percent (%)")+ 
+  theme(axis.title.y = element_text(size=17, face="bold")) +
+  theme(axis.title.x = element_text(size=17, face="bold")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(plot.title = element_text(face="bold"))+
+theme(legend.title = element_text(face="bold",size = 17))+
+theme(legend.text = element_text(size = 20))
+
+# Close the PDF device
+dev.off()
+```
+
+
+
+#need change
+Y lim each time
+Violin for Dapi Integrated intensity
+```{r}
+
+graph2 <- nuclei.table %>%  ggplot( aes(x=reorder(Name, OrderNumber.2), y=Intensity_IntegratedIntensity_DNA, fill = reorder(Name, OrderNumber.2))) + 
+  geom_violin() +
+  theme_bw()+
+  scale_fill_brewer(palette="Set1", name="Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 14),
+          axis.text.y = element_text(face="bold",size = 14))+ 
+  ggtitle('Relative genomic content per nuclei')+
+xlab("Condition") + ylab("Integrated Intensity")+
+  theme(axis.title.y = element_text(size=14, face="bold")) +
+  theme(axis.title.x = element_text(size=14, face="bold")) +
+  theme(plot.title = element_text(face="bold"))+
+  theme(plot.subtitle = element_text(size=14, face="bold"))+
+  theme(legend.title = element_text(face="bold",size = 14))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.text = element_text(size = 14))+
+  ylim(0,3000)
+
+ggsave('Violin.Integrated.Intensity.dapi.png', plot = graph2, device = "png",dpi = 700)  
+graph2   
+  
+```
+
+```{r}
+# Open PDF device
+pdf("Violin.Integrated.Intensity.dapi.pdf")
+nuclei.table %>%  ggplot( aes(x=reorder(Name, OrderNumber.2), y=Intensity_IntegratedIntensity_DNA, fill = reorder(Name, OrderNumber.2))) + 
+  geom_violin() +
+  theme_bw()+
+  scale_fill_brewer(palette="Set1", name="Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 14),
+          axis.text.y = element_text(face="bold",size = 14))+ 
+  ggtitle('Relative genomic content per nuclei')+
+xlab("Condition") + ylab("Integrated Intensity")+
+  theme(axis.title.y = element_text(size=14, face="bold")) +
+  theme(axis.title.x = element_text(size=14, face="bold")) +
+  theme(plot.title = element_text(face="bold"))+
+  theme(plot.subtitle = element_text(size=14, face="bold"))+
+  theme(legend.title = element_text(face="bold",size = 14))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.text = element_text(size = 14))+
+  ylim(0,3000)
+# Close the PDF device
+dev.off()
+```
+
+
+#need change
+Y lim each time
+Violin for Dapi Integrated intensity for EdU objects
+```{r}
+graph9 <-nuclei.table %>%  filter(Children_EdU_Count > 0) %>% ggplot( aes(x=reorder(Name, OrderNumber.2), y=Intensity_IntegratedIntensity_DNA, fill = reorder(Name, OrderNumber.2))) + 
+  geom_violin() +
+  theme_bw()+
+  scale_fill_brewer(palette="Set1", name="Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 14),
+          axis.text.y = element_text(face="bold",size = 14))+ 
+  ggtitle('Dapi in EdU positive nuclei')+
+xlab("Condition") + ylab("Integrated Intensity")+
+  theme(axis.title.y = element_text(size=14, face="bold")) +
+  theme(axis.title.x = element_text(size=14, face="bold")) +
+  theme(plot.title = element_text(face="bold"))+
+  theme(plot.subtitle = element_text(size=14, face="bold"))+
+  theme(legend.title = element_text(face="bold",size = 14))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.text = element_text(size = 14))+
+  ylim(0,3000)
+
+ggsave('Violin.Integrated.Intensity.dapi.eduobjects.png', plot = graph9, device = "png",dpi = 700)  
+graph9  
+  
+```
+
+#need change
+Violin for Dapi Integrated intensity for non EdU objects
+```{r}
+graph18 <-nuclei.table %>%  filter(Children_EdU_Count == 0) %>% ggplot( aes(x=reorder(Name, OrderNumber.2), y=Intensity_IntegratedIntensity_DNA, fill = reorder(Name, OrderNumber.2))) +
+  geom_violin() +
+  theme_bw()+
+  scale_fill_brewer(palette="Set1",name = "Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 14),
+          axis.text.y = element_text(face="bold",size = 14))+ 
+  ggtitle('Dapi in EdU negative nuclei')+
+xlab("Condition") + ylab("Integrated Intensity")+
+  theme(axis.title.y = element_text(size=14, face="bold")) +
+  theme(axis.title.x = element_text(size=14, face="bold")) +
+  theme(plot.title = element_text(face="bold"))+
+  theme(plot.subtitle = element_text(size=14, face="bold"))+
+  theme(legend.title = element_text(face="bold",size=14))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.text = element_text(size = 14))+
+  ylim(0,3000)
+
+ggsave('Violin.Integrated.Intensity.dapi.noneduobjects.png', plot = graph18, device = "png",dpi = 700)  
+graph18  
+  
+```
+
+
+column for pairing violin plots 
+#Need to change things based on the ordering file
+```{r}
+test.nuclei.table <- nuclei.table
+test.nuclei.table$Children_EdU_Count <- as.integer(test.nuclei.table$Children_EdU_Count)
+test.nuclei.table <- test.nuclei.table %>% filter(Children_EdU_Count<2)
+test.nuclei.table$dapi.identifier <- paste(test.nuclei.table$Name,test.nuclei.table$Children_EdU_Count) 
+ordering <- test.nuclei.table
+ordering$dapi.identifier <- test.nuclei.table$dapi.identifier
+ordering <- ordering[!duplicated(ordering$dapi.identifier), ]
+ordering$OrderNumber.violinpaired <- c(1,2,3,4,6,5)
+ordering <- ordering[,c(17,18)]
+test.nuclei.table <- left_join(test.nuclei.table, ordering, by = c("dapi.identifier" = "dapi.identifier"))
+head(test.nuclei.table)
+```
+
+testing putting violin plots next to eachother that are proliferative and nonproliferative
+```{r}
+graphparallel <-test.nuclei.table  %>% ggplot( aes(x=reorder(dapi.identifier, OrderNumber.violinpaired), y=Intensity_IntegratedIntensity_DNA, fill = reorder(Name, OrderNumber.2))) +
+  geom_violin() +
+  theme_bw()+
+  scale_fill_brewer(palette="Set1",name = "Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 14),
+          axis.text.y = element_text(face="bold",size = 14))+ 
+  ggtitle('Relative genomic content per nuclei \nseperated by EdU incorperation')+
+xlab("Condition") + ylab("Integrated Intensity")+
+  theme(axis.title.y = element_text(size=14, face="bold")) +
+  theme(axis.title.x = element_text(size=14, face="bold")) +
+  theme(plot.title = element_text(face="bold"))+
+  theme(plot.subtitle = element_text(size=14, face="bold"))+
+  theme(legend.title = element_text(face="bold",size=14))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.text = element_text(size = 14))+
+  ylim(0,3000)
+
+ggsave('Violin.Integrated.Intensity.dapi.parallel.0equaleduneg.1equaledupos.png', plot = graphparallel, device = "png",dpi = 700)  
+graphparallel
+  
+```
+```{r}
+# Open PDF device
+pdf("Violin.Integrated.Intensity.dapi.parallel.0equaleduneg.1equaledupos.pdf")
+test.nuclei.table  %>% ggplot( aes(x=reorder(dapi.identifier, OrderNumber.violinpaired), y=Intensity_IntegratedIntensity_DNA, fill = reorder(Name, OrderNumber.2))) +
+  geom_violin() +
+  theme_bw()+
+  scale_fill_brewer(palette="Set1",name = "Condition")+
+  theme(axis.text.x = element_text(face="bold", size = 14),
+          axis.text.y = element_text(face="bold",size = 14))+ 
+  ggtitle('Relative genomic content per nuclei \nseperated by EdU incorperation')+
+xlab("Condition") + ylab("Integrated Intensity")+
+  theme(axis.title.y = element_text(size=14, face="bold")) +
+  theme(axis.title.x = element_text(size=14, face="bold")) +
+  theme(plot.title = element_text(face="bold"))+
+  theme(plot.subtitle = element_text(size=14, face="bold"))+
+  theme(legend.title = element_text(face="bold",size=14))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.text = element_text(size = 14))+
+  ylim(0,3000)# Close the PDF device
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Merging Violin Plots
+```{r}
+#ggarrange(graph1,graph2, graph9, graph18 + rremove("x.text"), 
+ #         labels = c("A", "B", "C", "D"),
+  #        ncol = 2, nrow = 2)
+
+
+
+
+
+figure1 <- ggarrange(graph2+ rremove("x.text"), graphparallel+ rremove("x.text"), graph1+ rremove("x.text"), graphphh3pos.bargraph + rremove("x.text"),
+          labels = c("A", "B", "C","D"),
+          ncol = 2, nrow = 2,common.legend = TRUE, legend = "bottom")
+figure1.merge <- annotate_figure(figure1,
+                top = text_grob("Percent EdU and DNA content in CMs grown +/- CHIR", color = "black", face = "bold", size = 20),
+                fig.lab = "Figure 1", fig.lab.face = "bold", fig.lab.size = 15)
+
+ggsave('Figure1.dapi.and.percentedu.png', plot = figure1.merge, device = "png",dpi = 700,width = 30, height = 30, units = "cm")
+figure1.merge
+
+
+#ggarrange(bxp, dp, labels = c("A", "B"),
+ #         common.legend = TRUE, legend = "bottom")
+
+```
+```{r}
+# Open PDF device
+pdf("Figure1.dapi.and.percentedu.pdf", width = 10, height = 8)
+annotate_figure(figure1,
+                top = text_grob("Percent EdU and DNA content in CMs grown +/- CHIR", color = "black", face = "bold", size = 20),
+                fig.lab = "Figure 1", fig.lab.face = "bold", fig.lab.size = 15)
+dev.off()
+```
+
+
+Merging Violin Plots Example
+```{r}
+#ggarrange(graph1,graph2, graph9, graph18 + rremove("x.text"), 
+ #         labels = c("A", "B", "C", "D"),
+  #        ncol = 2, nrow = 2)
+
+
+
+
+
+#figure1 <- ggarrange(graph1,graph2, graph9, graph18 + rremove("x.text"), 
+ #         labels = c("A", "B", "C", "D"),
+  #        ncol = 2, nrow = 2,common.legend = TRUE, legend = "bottom")
+#annotate_figure(figure1,
+ #               top = text_grob("Visualizing mpg", color = "black", face = "bold", size = 24),
+  #              bottom = text_grob("Data source: \n mtcars data set", color = "blue",
+   #                                hjust = 1, x = 1, face = "italic", size = 10),
+    #            left = text_grob("Figure arranged using ggpubr", color = "green", rot = 90),
+     #           right = "I'm done, thanks :-)!",
+      #          fig.lab = "Figure 1", fig.lab.face = "bold")
+
+
+
+
+
+
+#ggarrange(bxp, dp, labels = c("A", "B"),
+ #         common.legend = TRUE, legend = "bottom")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

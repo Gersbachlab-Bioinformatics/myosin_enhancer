@@ -1,0 +1,212 @@
+---
+title: "21.11.09 Cardiac.factors.PCM1.edu"
+output: html_document
+---
+
+#Sections
+
+##Preprocessing
+##Graph Section
+
+#This is a good example of how to make figures in R for publications
+http://www.sthda.com/english/articles/24-ggpubr-publication-ready-plots/81-ggplot2-easy-way-to-mix-multiple-graphs-on-the-same-page/
+
+#Statistics tests
+https://www.r-bloggers.com/2017/06/add-p-values-and-significance-levels-to-ggplots/
+
+
+
+Library load
+```{r}
+library(tidyverse)
+library(scales)
+library(ggExtra)
+#library(ggpubr)
+library(rstatix)
+```
+
+Search for all <#Potential change> for places that may need to be changed if you deviate from the initial pipeline methods
+Search for all <#need change> that are unique things to each experiment usually titles
+
+
+
+##Preprocessing
+Load files and organizing data
+```{r}
+nuclei.pre.table <- read.csv("Nuclei.csv", header = TRUE)
+metadata <- read.csv("metadata.2.csv", header = TRUE)
+nuclei.table <- nuclei.pre.table %>% select(ImageNumber, ObjectNumber, AreaShape_Area, Intensity_IntegratedIntensity_DNA, Intensity_IntegratedIntensity_EdU,Intensity_IntegratedIntensity_Alpha_actinin,Intensity_IntegratedIntensity_pHH3, Intensity_StdIntensity_DNA, Intensity_StdIntensity_EdU,Intensity_StdIntensity_Alpha_actinin,Intensity_StdIntensity_pHH3, Children_EdU_Count)
+head(nuclei.table)
+nuclei.table <- left_join(nuclei.table, metadata, by = c("ImageNumber" = "ImageNumber"))
+nuclei.table <- arrange(nuclei.table, OrderNumber.2)
+head(nuclei.table)
+```
+Down sampling all samples to be counting the same number of cells
+
+
+```{r}
+set.seed(42)
+nuclei.table.condition.1 <- nuclei.table %>% filter(Condition == "0uM.rep1")
+nuclei.table.condition.2 <- nuclei.table %>% filter(Condition == "0uM.rep2")
+nuclei.table.condition.3 <- nuclei.table %>% filter(Condition == "0uM.rep3")
+nuclei.table.condition.4 <- nuclei.table %>% filter(Condition == "2uM.rep1")
+nuclei.table.condition.5 <- nuclei.table %>% filter(Condition == "2uM.rep2")
+nuclei.table.condition.6 <- nuclei.table %>% filter(Condition == "2uM.rep3")
+nuclei.table.condition.7 <- nuclei.table %>% filter(Condition == "4uM.rep1")
+nuclei.table.condition.8 <- nuclei.table %>% filter(Condition == "4uM.rep2")
+nuclei.table.condition.9 <- nuclei.table %>% filter(Condition == "4uM.rep3")
+
+nuclei.table.condition.1 <-nuclei.table.condition.1[sample(1:nrow(nuclei.table.condition.1), 2000), ]
+nuclei.table.condition.2 <-nuclei.table.condition.2[sample(2:nrow(nuclei.table.condition.2), 2000), ]
+nuclei.table.condition.3 <-nuclei.table.condition.3[sample(3:nrow(nuclei.table.condition.3), 2000), ]
+nuclei.table.condition.4 <-nuclei.table.condition.4[sample(4:nrow(nuclei.table.condition.4), 2000), ]
+nuclei.table.condition.5 <-nuclei.table.condition.5[sample(5:nrow(nuclei.table.condition.5), 2000), ]
+nuclei.table.condition.6 <-nuclei.table.condition.6[sample(6:nrow(nuclei.table.condition.6), 2000), ]
+nuclei.table.condition.7 <-nuclei.table.condition.7[sample(7:nrow(nuclei.table.condition.7), 2000), ]
+nuclei.table.condition.8 <-nuclei.table.condition.8[sample(8:nrow(nuclei.table.condition.8), 2000), ]
+nuclei.table.condition.9 <-nuclei.table.condition.9[sample(9:nrow(nuclei.table.condition.9), 2000), ]
+nuclei.table <- rbind(nuclei.table.condition.1,nuclei.table.condition.2,nuclei.table.condition.3,nuclei.table.condition.4,nuclei.table.condition.5,nuclei.table.condition.6,nuclei.table.condition.7,nuclei.table.condition.8,nuclei.table.condition.9)
+#write.csv(nuclei.table,"nucleitable.organized.trimmed.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.1,"nucleitable.condition1.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.2,"nucleitable.condition2.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.3,"nucleitable.condition3.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.4,"nucleitable.condition4.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.5,"nucleitable.condition5.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.6,"nucleitable.condition6.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.7,"nucleitable.condition7.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.8,"nucleitable.condition8.csv", row.names = FALSE)
+#write.csv(nuclei.table.condition.9,"nucleitable.condition9.csv", row.names = FALSE)
+
+
+```
+
+
+```{r}
+colnames(nuclei.table)
+```
+```{r}
+# Define your phase categories based on Intensity_IntegratedIntensity_DNA
+nuclei.table.phase <- nuclei.table %>%
+  mutate(Phase = case_when(
+    Intensity_IntegratedIntensity_DNA < 450 ~ "G1",
+    Intensity_IntegratedIntensity_DNA >= 450 & Intensity_IntegratedIntensity_DNA < 550 ~ "S phase",
+    Intensity_IntegratedIntensity_DNA >= 550 & Intensity_IntegratedIntensity_DNA < 900 ~ "G2/M",
+    Intensity_IntegratedIntensity_DNA >= 900 ~ ">4n"
+  ))
+nuclei.table.phase <- nuclei.table.phase %>%
+  mutate(EdU_Group = ifelse(Children_EdU_Count == 0, "Negative", "Positive"))
+
+```
+
+
+```{r}
+# Summarize the counts for each Condition and Phase
+summary_table <- nuclei.table.phase %>%
+  group_by(Condition, EdU_Group) %>%
+  mutate(
+    Total_Count_Group = n()  # Calculate total count for each Condition and EdU_Group
+  ) %>%
+  group_by(Condition, EdU_Group, Phase) %>%
+  summarise(
+    Total_Count = n(),
+    pHH3_Count = sum(Intensity_IntegratedIntensity_pHH3 > 1000),
+    Phase_Percent = (Total_Count / first(Total_Count_Group)) * 100,  # Use total count for the group
+    pHH3_Percent = pHH3_Count / Total_Count
+  ) %>%
+  ungroup()
+
+# View the resulting dataframe
+print(summary_table)
+```
+
+
+```{r}
+# Write the summary_table to a .txt file
+write.table(summary_table, file = "phase_summary_table.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+```{r}
+write.table(nuclei.table.phase, file = "nuclei_table_phase_2000each.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+```{r}
+# Loop over each unique Name
+unique_names <- unique(nuclei.table.phase$Name)
+
+for (name in unique_names) {
+  # Filter for Children_EdU_Count = 0
+  edu_neg <- nuclei.table.phase %>%
+    filter(Name == name & Children_EdU_Count == 0)
+  
+  # Write to a .txt file if there are any rows
+  if (nrow(edu_neg) > 0) {
+    write.table(edu_neg, file = paste0(name, "_EdUneg_processed.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+
+  # Filter for Children_EdU_Count >= 1
+  edu_pos <- nuclei.table.phase %>%
+    filter(Name == name & Children_EdU_Count >= 1)
+  
+  # Write to a .txt file if there are any rows
+  if (nrow(edu_pos) > 0) {
+    write.table(edu_pos, file = paste0(name, "_EdUpos_processed.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+}
+
+```
+
+```{r}
+# Loop over each unique Name
+unique_names <- unique(nuclei.table.phase$Condition)
+
+for (name in unique_names) {
+  # Filter for Children_EdU_Count = 0
+  edu_neg <- nuclei.table.phase %>%
+    filter(Name == name & Children_EdU_Count == 0)
+  
+  # Write to a .txt file if there are any rows
+  if (nrow(edu_neg) > 0) {
+    write.table(edu_neg, file = paste0(name, "_EdUneg_processed.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+
+  # Filter for Children_EdU_Count >= 1
+  edu_pos <- nuclei.table.phase %>%
+    filter(Name == name & Children_EdU_Count >= 1)
+  
+  # Write to a .txt file if there are any rows
+  if (nrow(edu_pos) > 0) {
+    write.table(edu_pos, file = paste0(name, "_EdUpos_processed.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+}
+
+```
+
+
+```{r}
+# Loop over each unique Condition
+unique_conditions <- unique(nuclei.table.phase$Condition)
+
+for (condition in unique_conditions) {
+  # Filter for Children_EdU_Count = 0
+  edu_neg <- nuclei.table.phase %>%
+    filter(Condition == condition & Children_EdU_Count == 0)
+  
+  # Write to a .txt file if there are any rows
+  if (nrow(edu_neg) > 0) {
+    write.table(edu_neg, file = paste0(condition, "_EdUneg_processed.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+
+  # Filter for Children_EdU_Count >= 1
+  edu_pos <- nuclei.table.phase %>%
+    filter(Condition == condition & Children_EdU_Count >= 1)
+  
+  # Write to a .txt file if there are any rows
+  if (nrow(edu_pos) > 0) {
+    write.table(edu_pos, file = paste0(condition, "_EdUpos_processed.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+}
+
+```
+
+
