@@ -1,0 +1,558 @@
+---
+title: "Homolog library for heart regeneration analysis"
+output: html_notebook
+---
+
+This sheet is for the analysis of the screens performed using the Homolog library to that being tested in mice but with additional genes and with 10 guides per gene. The cardiomyocytes were differentiated using taylor's composite protocol and then were transduced during replating of the differentiation and 5 days post one half of each transduction was collected as an initial time point and the other was collect 14 days out as a final time point. These transductions were done in duplicate and were done at 200x representation
+
+Search for the below phrase for all the parts to change
+###NEED to change the name of this section each time
+
+#Libraries to load
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(biomaRt)
+```
+
+NEED to change the name of this section each time
+Change the file being uploaded
+```{r}
+countstable <- read.table("CONCHIR.rnaseq.gene_countsonly.txt", header = TRUE, sep = "\t",row.names = 1)
+
+head(countstable)
+```
+
+
+Making the metadata for analysis
+```{r}
+condition <- c('Control','Control','Control','CHIR','CHIR','CHIR')  #vector of column names for the data frame
+replicate <- c(1,2,3,1,2,3)
+treatment <- c('control','control','control','treated','treated','treated')
+countstable.colData <- data.frame(row.names=colnames(countstable), condition=factor(condition, levels=c('CHIR','Control')), replicate=factor(replicate, levels=c(1,2,3)), treatment=factor(treatment, levels=c('treated','control')))
+head(countstable.colData)
+```
+
+
+
+
+
+
+## Generate a DeSeq object by inputing the count table, metatdata, and specifying the design for the differential analysis
+## Here the design is to compare gRNA abundance across sorted bins while keeping replicates paired
+NEED to change the name of this section each time 
+Change the design perameter as you see fit
+```{r}
+
+dds = DESeqDataSetFromMatrix(countData = countstable, colData = countstable.colData, design=~replicate +treatment)
+
+head(dds)
+```
+
+
+
+```{r}
+processed.dds = DESeq(dds)
+head(processed.dds)
+```
+
+
+
+## Specify the groups you are contrasting - here we are comparing the counts of gRNAs in low to high and low to unsorted 
+NEED to change the name of this section each time
+change the name of the export file
+```{r}
+result.dds <- results(processed.dds, alpha =0.05, contrast=c('treatment','treated','control'))
+result.dds <- result.dds[complete.cases(result.dds),]  #remove any rows with NA
+head(result.dds)
+result.dds.lfchange <- results(processed.dds, alpha =0.01, contrast=c('treatment','treated','control'))
+result.dds.lfchange <- result.dds.lfchange[complete.cases(result.dds.lfchange),]  #remove any rows with NA
+#write.csv(result.dds, 'CHIRvsCON.RNA.results.csv', quote = FALSE)
+```
+
+```{r}
+result.summary<- summary(result.dds)
+result.summary
+result.summary.lfc<- summary(result.dds.lfchange)
+result.summary.lfc
+```
+
+
+## Generate a table with normalized counts (normalizes on sequencing depth and library composition)
+
+```{r}
+normalized.counts = data.frame(counts(processed.dds, normalized = TRUE))
+
+plotMA(result.dds, ylim=c(-8,8))
+
+PCA_data = DESeqTransform(processed.dds)
+z  = plotPCA(PCA_data, intgroup = 'condition')
+z + geom_label(aes(label = name))
+```
+
+
+
+
+#Order dataframe by statistical signficance
+```{r}
+result.dds = result.dds[order(result.dds$padj),]
+
+```
+
+
+
+```{r}
+resultsNames(processed.dds)
+#this is used for the coef= part below
+```
+
+
+```{r}
+shrunkRes <- lfcShrink(processed.dds, coef="treatment_control_vs_treated", type="ashr")
+shrunkRes[,2] <- shrunkRes[,2]*-1
+summary(shrunkRes)
+summary(result.dds)
+```
+
+
+
+```{r}
+result.summary<- summary(result.dds)
+result.summary
+result.summary.lfc<- summary(result.dds.lfchange)
+result.summary.lfc
+write.csv(result.summary.lfc, 'CHIR.results.summary.lfc.csv', quote = FALSE)
+```
+
+#plot shrunken MA
+```{r}
+MA.shrink<- plotMA(shrunkRes,
+       ylim=c(-8,8),
+       las=1,
+       alpha=0.01)
+MA.shrink
+```
+
+
+
+NEED to change the name of this section each time
+```{r}
+#write.csv(result.dds, 'CHIRvsCONorder.RNA.csv', quote= FALSE)
+```
+
+MA plot export
+```{r}
+# 1. Open jpeg file
+pdf('CHIR.MA.plot.pdf' )
+# 2. Create the plot
+plotMA(result.dds, ylim=c(-7,7), alpha=0.01)
+# 3. Close the file
+dev.off()
+```
+
+MA for shrink results
+```{r}
+# 1. Open jpeg file
+pdf('CHIR.MAshrink.plot.pdf' )
+# 2. Create the plot
+plotMA(shrunkRes,ylim=c(-7,7),las=1,alpha=0.01)
+# 3. Close the file
+dev.off()
+```
+
+
+```{r}
+plot.FCvspvalue <- ggplot(as.data.frame(result.dds)) +
+  geom_point(aes(x = -log10(padj), y = log2FoldChange, color = ifelse(padj < 0.05,"Significant",'Nonsignificant'))) +
+  xlab("Adjusted P value") +
+  ylab("log2(Fold Change)") +
+  ggtitle("log2(Fold Change) vs P value for CHIR vs CON") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_colour_discrete("Significance P value <0.5")
+
+
+plot.FCvspvalue
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##Convert EnsemblID to Gene Symbol of candidate list with AnnotationDbi
+```{r}
+library(AnnotationDbi)
+library(org.Hs.eg.db) 
+library(scales)
+```
+
+```{r}
+counts.id <- normalized.counts
+row.names(counts.id) <- gsub("\\..*","",row.names(counts.id)) #remove the version suffix from EnsemblIDs (".xx")
+counts.id$gene <- row.names(counts.id)
+counts.id$gene <- mapIds(org.Hs.eg.db, keys=counts.id$gene, column="SYMBOL", keytype="ENSEMBL", multiVals="first")
+```
+
+
+```{r}
+results.id <- result.dds
+row.names(results.id) <- gsub("\\..*","",row.names(results.id)) #remove the version suffix from EnsemblIDs (".xx")
+results.id$gene <- row.names(results.id)
+results.id$gene <- mapIds(org.Hs.eg.db, keys=results.id$gene, column="SYMBOL", keytype="ENSEMBL", multiVals="first")
+head(results.id)
+```
+###Now we will evaluate individual genes with Plot counts
+#HK genes
+```{r}
+plotCounts(processed.dds, gene="ENSG00000111640.13", intgroup="condition", main= "GAPDH")
+plotCounts(processed.dds, gene="ENSG00000112592.11", intgroup="condition", main= "TBP")
+```
+
+#Getting top 5 diff genes on pvalue or fold change count tables
+# this removes all rna seq counts with no associated gene for counts keep that in mind with count tables
+
+```{r}
+results.fc.nona<- results.id[complete.cases(results.id$gene),]
+results.fc.nona = results.fc.nona[order(results.fc.nona$padj),]
+top5.pvalue <- results.fc.nona[1:5,7]
+top5pvalue.results <- results.fc.nona[1:5,]
+counts.5pvalue <- counts.id[counts.id$gene %in%  top5.pvalue,]
+counts.5pvalue
+```
+
+```{r}
+results.fc.nona = results.fc.nona[order(-results.fc.nona$log2FoldChange),]
+top5.fc <- results.fc.nona[1:5,7]
+top5fc.results <- results.fc.nona[1:5,]
+counts.5fc <- counts.id[counts.id$gene %in%  top5.fc,]
+counts.5fc
+```
+
+```{r}
+results.fc.nona= results.fc.nona[order(results.fc.nona$log2FoldChange),]
+top5.fc.neg <- results.fc.nona[1:5,7]
+counts5fc.neg <- counts.id[counts.id$gene %in%  top5.fc.neg,]
+counts5fc.neg
+top5fc.neg.results <- results.fc.nona[1:5,]
+#head(counts.id[1,])
+```
+
+joining counts and pvalue/foldchange for top5 together
+
+```{r}
+count.fc.pvalue <- left_join(as.data.frame(results.id),counts.id)
+head(count.fc.pvalue)
+```
+
+#FC, neg FC, pvalue padj/count tables
+```{r}
+count.fc.pvalue.top5fc<- left_join(as.data.frame(top5fc.results),counts.5fc)
+count.fc.pvalue.top5fc
+count.fc.pvalue.top5fc.neg<- left_join(as.data.frame(top5fc.neg.results),counts.5fc)
+count.fc.pvalue.top5fc.neg
+count.fc.pvalue.top5pvalue<- left_join(as.data.frame(top5pvalue.results),counts.5pvalue)
+count.fc.pvalue.top5pvalue
+
+```
+
+
+#gather plots
+```{r}
+gathered.5fc <- counts.5fc %>%
+  gather(sample,count,-gene)
+gathered.5fc.neg<- counts5fc.neg %>%
+  gather(sample,count,-gene)
+gathered.5pvalue <- counts.5pvalue %>%
+  gather(sample,count,-gene)
+head(gathered.5pvalue)
+head(gathered.5fc)
+head(gathered.5fc.neg)
+```
+
+#plot counts fold change
+```{r}
+plot.5fc <- ggplot(gathered.5fc) +
+  geom_point(aes(x = gene, y = count, color = sample)) +
+  scale_color_manual(values = c("control.1.rna.star2" = "steelblue",
+                                "control.2.rna.star2" = "steelblue",
+                                "control.3.rna.star2" = "steelblue",
+                                "chir4um.1.rna.star2" = "red",
+                                "chir4um.2.rna.star2" = "red",
+                                "chir4um.3.rna.star2" = "red")) +
+  scale_y_log10(labels = comma) +
+  xlab("") +
+  ylab("normalized counts (log scale)") +
+  ggtitle("Top 5 by postive fold change") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot.5fc
+
+```
+
+
+
+#plot counts fold change negative
+```{r}
+plot.5fc.neg <- ggplot(gathered.5fc.neg) +
+  geom_point(aes(x = gene, y = count, color = sample)) +
+  scale_color_manual(values = c("control.1.rna.star2" = "steelblue",
+                                "control.2.rna.star2" = "steelblue",
+                                "control.3.rna.star2" = "steelblue",
+                                "chir4um.1.rna.star2" = "red",
+                                "chir4um.2.rna.star2" = "red",
+                                "chir4um.3.rna.star2" = "red")) +
+  scale_y_log10(labels = comma) +
+  xlab("") +
+  ylab("normalized counts (log scale)") +
+  ggtitle("Top 5 by negative fold change") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot.5fc.neg
+```
+
+
+#plot counts for pvalue
+```{r}
+plot.5pvalue <- ggplot(gathered.5pvalue) +
+  geom_point(aes(x = gene, y = count, color = sample)) +
+  scale_color_manual(values = c("control.1.rna.star2" = "steelblue",
+                                "control.2.rna.star2" = "steelblue",
+                                "control.3.rna.star2" = "steelblue",
+                                "chir4um.1.rna.star2" = "red",
+                                "chir4um.2.rna.star2" = "red",
+                                "chir4um.3.rna.star2" = "red")) +
+  scale_y_log10(labels = comma) +
+  xlab("") +
+  ylab("normalized counts (log scale)") +
+  ggtitle("Top 5 by pvalue") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot.5pvalue
+```
+
+```{r}
+ggsave('top5.posfc.chir.png', plot = plot.5fc, device = "png",dpi = 700) 
+ggsave('top5.negfc.chir.png', plot = plot.5fc.neg, device = "png",dpi = 700) 
+
+```
+
+
+
+#TopGo analaysis
+
+```{r}
+library(topGO)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Gathering the columns to have normalized counts to a single column
+gathered_markercounts <- markercounts2 %>%
+  gather(colnames(markercounts2)[2:7], key = "samplename", value = "normalized_counts")
+
+#View(gathered_markercounts) #check gathered df
+
+## plot using ggplot2
+#First will need to turn genes into factor to preserve order, else ggplot will re-order to be alphabetical
+gathered_markercounts$gene <- as.character(gathered_markercounts$gene)
+gathered_markercounts$gene <- factor(gathered_markercounts$gene, levels=unique(gathered_markercounts$gene))
+
+#plot
+combinedcountplot <- ggplot(gathered_markercounts) +
+  geom_point(aes(x = gene, y = normalized_counts, color = samplename)) +
+  scale_color_manual(values = c("SVGp12_r1" = "steelblue",
+                                "SVGp12_r2" = "steelblue",
+                                "SVGp12_r3" = "steelblue",
+                                "hPA_r1" = "red",
+                                "hPA_r2" = "red",
+                                "hPA_r3" = "red")) +
+  scale_y_log10(labels = comma) +
+  xlab("") +
+  ylab("normalized counts (log10)") +
+  ggtitle("Marker Gene Expression") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+combinedcountplot
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+markercounts2$gene <- mapIds(org.Hs.eg.db, keys=markercounts2$gene, column="SYMBOL", keytype="ENSEMBL", multiVals="first")
+
+# Gathering the columns to have normalized counts to a single column
+gathered_markercounts <- markercounts2 %>%
+  gather(colnames(markercounts2)[2:7], key = "samplename", value = "normalized_counts")
+
+View(gathered_markercounts) #check gathered df
+
+## plot using ggplot2
+#First will need to turn genes into factor to preserve order, else ggplot will re-order to be alphabetical
+gathered_markercounts$gene <- as.character(gathered_markercounts$gene)
+gathered_markercounts$gene <- factor(gathered_markercounts$gene, levels=unique(gathered_markercounts$gene))
+
+#plot
+combinedcountplot <- ggplot(gathered_markercounts) +
+  geom_point(aes(x = gene, y = normalized_counts, color = samplename)) +
+  scale_color_manual(values = c("SVGp12_r1" = "steelblue",
+                                "SVGp12_r2" = "steelblue",
+                                "SVGp12_r3" = "steelblue",
+                                "hPA_r1" = "red",
+                                "hPA_r2" = "red",
+                                "hPA_r3" = "red")) +
+  scale_y_log10(labels = comma) +
+  xlab("") +
+  ylab("normalized counts (log10)") +
+  ggtitle("Marker Gene Expression") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+combinedcountplot
+
+####to do
+#finalize list of marker genes
+
+#Make more MA plots (?)
+  #one with key genes called out that are DE
+  #one with key genes called out that are not DE
+
+ 
+
+ 
+ 
+ 
+ 
+################################################################################
+################################################################################
+################################################################################
+
+### if we want to attempt to convert EnsemblID to gene symbol for whole file, try this code:
+
+#Map to symbols
+normalizedcounts$symbol <- mapIds(org.Hs.eg.db, keys=row.names(normalizedcounts), column="SYMBOL", keytype="ENSEMBL", multiVals="first")
+
+
+################################################################################
+
+# [DFR edit] there are a bunch of NAs so replace these using tidyr
+library(tidyr)
+shrunkRes$padj <- replace_na(shrunkRes$padj, 1)
+# end edit
+```
+
+```{r}
+summary(shrunkRes, alpha=0.01)
+
+inx0.01 <- shrunkRes$padj <= 0.01 #choose the FDR cutoff you want
+inxfc <- abs(shrunkRes$log2FoldChange) >= 1
+#summary(shrunkRes[inx0.01 & inxfc,])
+summary(shrunkRes[inx0.01,])
+```
+```{r}
+#Report file with hits
+#VP64.hits <- subset(shrunkRes[inx0.01 & inxfc,], padj<.01 & abs(log2FoldChange)>1) #padj < .01 & abs(log2fc) > 1
+VP64.hits <- subset(shrunkRes[inx0.01,], padj<.01) #taking all significant hits
+a <- as.character(countsdata[inx0.01, 1])
+
+#locs <- do.call(rbind, a)
+GeneID <- a
+#colnames(locs) <- c("GeneID")
+VP64.out <- cbind(Genef ID, VP64.hits)
+head(VP64.out)
+
+write.table(VP64.out, file="210210_Ctrl_VP64_vs_Tet1_nt_deseq2_topHits.shrunk.txt", quote=FALSE, row.names=FALSE)
+```
+
+
+
