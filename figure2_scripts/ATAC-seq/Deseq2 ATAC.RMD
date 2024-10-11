@@ -1,0 +1,180 @@
+---
+title: "Homolog library for heart regeneration analysis"
+output: html_notebook
+---
+
+This sheet is for the analysis of the screens performed using the Homolog library to that being tested in mice but with additional genes and with 10 guides per gene. The cardiomyocytes were differentiated using taylor's composite protocol and then were transduced during replating of the differentiation and 5 days post one half of each transduction was collected as an initial time point and the other was collect 14 days out as a final time point. These transductions were done in duplicate and were done at 200x representation
+
+Search for the below phrase for all the parts to change
+###NEED to change the name of this section each time
+
+#Libraries to load
+```{r}
+library(DESeq2)
+library(tidyverse)
+```
+
+NEED to change the name of this section each time
+Change the file being uploaded
+```{r}
+countstable <- read.table("CHIR.ATAC.countsonly.txt", header = TRUE, sep = "\t",row.names = 1)
+countstable <- countstable[,1:6]
+head(countstable)
+```
+
+
+Making the metadata for analysis
+```{r}
+condition <- c('CHIR','CHIR','CHIR','Control','Control','Control')  #vector of column names for the data frame
+replicate <- c(1,2,3,1,2,3)
+treatment <- c('treated','treated','treated','control','control','control')
+countstable.colData <- data.frame(row.names=colnames(countstable), condition=factor(condition, levels=c('CHIR','Control')), replicate=factor(replicate, levels=c(1,2,3)), treatment=factor(treatment, levels=c('treated','control')))
+head(countstable.colData)
+```
+
+
+
+
+
+## Generate a DeSeq object by inputing the count table, metatdata, and specifying the design for the differential analysis
+## Here the design is to compare gRNA abundance across sorted bins while keeping replicates paired
+NEED to change the name of this section each time 
+Change the design perameter as you see fit
+```{r}
+
+dds = DESeqDataSetFromMatrix(countData = countstable, colData = countstable.colData, design=~replicate +treatment)
+
+head(dds)
+```
+
+
+
+```{r}
+processed.dds = DESeq(dds)
+head(processed.dds)
+```
+
+
+
+## Specify the groups you are contrasting - here we are comparing the counts of gRNAs in low to high and low to unsorted 
+NEED to change the name of this section each time
+change the name of the export file
+```{r}
+result.dds <- results(processed.dds, alpha =0.05, contrast=c('treatment','treated','control'))
+result.dds <- result.dds[complete.cases(result.dds),]  #remove any rows with NA
+head(result.dds)
+result.dds.lfchange <- results(processed.dds, alpha =0.01, contrast=c('treatment','treated','control'))
+result.dds.lfchange <- result.dds.lfchange[complete.cases(result.dds.lfchange),]  #remove any rows with NA
+write.csv(result.dds, 'CHIRvsCON.atac.results.csv', quote = FALSE)
+```
+
+```{r}
+result.summary<- summary(result.dds)
+result.summary
+result.summary.lfc<- summary(result.dds.lfchange)
+result.summary.lfc
+write.csv(result.summary.lfc, 'CHIR.results.summary.lfc.csv', quote = FALSE)
+```
+
+
+## Generate a table with normalized counts (normalizes on sequencing depth and library composition)
+
+```{r}
+normalized.counts = data.frame(counts(processed.dds, normalized = TRUE))
+
+plotMA(result.dds, ylim=c(-2,2))
+
+PCA_data = DESeqTransform(processed.dds)
+z  = plotPCA(PCA_data, intgroup = 'condition')
+z + geom_label(aes(label = name))
+```
+
+
+
+```{r}
+resultsNames(processed.dds)
+#this is used for the coef= part below
+```
+
+###Shrinkage 
+## Calculate ashr Shrink values for dds.
+#Lowly expressed genes tend to have high relatively levels of variability. Shrinkage attempts to alleviate this
+#It does not change # of DE genes
+
+```{r}
+shrunkRes <- lfcShrink(processed.dds, coef="treatment_control_vs_treated", type="ashr")
+shrunkRes[,2] <- shrunkRes[,2]*-1
+summary(shrunkRes)
+summary(result.dds)
+```
+##if we wanted to shrink using 2014 DESeq2 shrinkage estimator using a Normal prior:
+#shrunkRes <- lfcShrink(dds, coef="celltype_SVGp12_vs_hPA", type="normal",lfcThreshold=1) ##need to verify what lfc threshold to use
+
+
+#plot shrunken MA
+```{r}
+MA.shrink<- plotMA(shrunkRes,
+       ylim=c(-3,3),
+       las=1,
+       alpha=0.01)
+MA.shrink
+```
+
+
+
+
+#Order dataframe by statistical signficance
+```{r}
+result.dds = result.dds[order(result.dds$padj),]
+shrunkRes = shrunkRes[order(shrunkRes$padj),]
+
+```
+
+NEED to change the name of this section each time
+```{r}
+write.csv(result.dds, 'CHIRvsCONorder.csv', quote= FALSE)
+write.csv(shrunkRes, 'CHIRvsCONorder.shrunk.csv', quote= FALSE)
+
+```
+
+PCA plot export
+```{r}
+# 1. Open jpeg file
+pdf("CHIR.PCA.pdf")
+# 2. Create the plot
+z + geom_label(aes(label = name)) + ylim(-1000000,1000000)
+# 3. Close the file
+dev.off()
+```
+MA plot export
+```{r}
+# 1. Open jpeg file
+pdf('CHIR.MA.plot.pdf' )
+# 2. Create the plot
+plotMA(result.dds, ylim=c(-7,7), alpha=0.01)
+# 3. Close the file
+dev.off()
+```
+
+
+MA for shrink results
+```{r}
+# 1. Open jpeg file
+pdf('CHIR.MAshrink.plot.pdf' )
+# 2. Create the plot
+plotMA(shrunkRes,ylim=c(-3,3),las=1,alpha=0.01)
+# 3. Close the file
+dev.off()
+```
+exporting normalized counts
+```{r}
+write.csv(normalized.counts, 'CHIR.normalized.counts.csv', quote= FALSE)
+head(normalized.counts)
+```
+
+```{r}
+
+```
+
+
+
