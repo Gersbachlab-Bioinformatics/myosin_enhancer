@@ -1,6 +1,7 @@
 #~/anaconda2/envs/Charlie_capture_HiCAR/bin/R
 
 library( "DESeq2" )
+# Deseq2 version 3.17
 library(ggplot2)
 
 Run_DESeq2_target<-function(resol){
