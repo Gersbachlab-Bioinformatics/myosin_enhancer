@@ -1,7 +1,7 @@
 #~/anaconda2/envs/Charlie_capture_HiCAR/bin/R
 
 library( "DESeq2" )
-# Deseq2 version 3.17
+# Deseq2 version 1.40.0
 library(ggplot2)
 
 
